@@ -4,7 +4,7 @@ import tkinter
 import os
 import subprocess
 import math
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, JpegImagePlugin
 
 MODE_SCALE=0
 MODE_FILL=1
@@ -21,11 +21,12 @@ def SanitiseFilename(utText):
 	# TO DO: sanitise a filename and return a good version
 	return utText
 
-def Elide(stText, psLength):
+def Elide(stText, psLength = 0):
 	# elide a piece of text so that it's no wider than psLength pixels
 	# return the elided text
-	if len(stText) > 18:
-		stText = stText[0:18] + '...'
+	MAXLEN=17
+	if len(stText) > MAXLEN:
+		stText = stText[0:MAXLEN] + '...'
 	return stText
 
 # redraw on events: resize/reflow, files changed in dir, selection changes
@@ -39,34 +40,54 @@ def DrawCanvas():
 	cwPicker.update_idletasks()
 	psCanvas = cwPicker.winfo_width()
 	psIconWidth = 150
-	psIconHeight = 100
+	psIconHeight = 120
 	psTextHeight = 20
-	psSpacer = 5
+	psSpacer = 15
 	ixCol = 0
 	ixRow = 0
-	scIconsPerRow = math.floor(psCanvas / (psIconWidth + psSpacer))
+
+# TO DO: get rid of canvas - it doesn't work with widgets. Gah!
+
+	scIconsPerRow = math.floor(psCanvas / psIconWidth)
 	for fnImage in arFiles:
 		# create a thumbnail of fnImage and draw on canvas - process symlinks correctly
 		# make clickable :o on click, set svSelectedFile and redraw
 		imThumb = None
+		JpegImagePlugin.DEBUG = True
 		try:
-			imThumb = Image.open(DIRECTORY + '/' + fnImage)
-			imThumb.thumbnail((psIconWidth - (2 * psSpacer), psIconHeight - psTextHeight), Image.ANTIALIAS)
+			fnReal = os.path.realpath(DIRECTORY + '/' + fnImage)
+#			print(fnReal)
+			imThumb = Image.open(fnReal)
+			imThumb.thumbnail((psIconWidth, psIconHeight), Image.ANTIALIAS)
 			imTkThumb = ImageTk.PhotoImage(imThumb)
-			cwPicker.create_image(ixCol * psIconWidth + psSpacer, ixRow * psIconHeight, image=imTkThumb)
+			lwIcon = tkinter.Label(cwPicker, image=imTkThumb)
+		except OSError:
+			print("OS error! " + fnReal)
+# OSError: can't identify file type
+			lwIcon = tkinter.Label(cwPicker, text="image not found")
 		except:
-			cwPicker.create_rectangle(ixCol * psIconWidth + psSpacer, ixRow * psIconHeight, (ixCol + 1) * psIconWidth - psSpacer, (ixRow + 1) * psIconHeight - psTextHeight, fill='blue')
+			print("other exception!")
+		lwIcon.grid(row=ixRow, column=ixCol)
 		# show trimmed down filename
-		stTrimmed = Elide(SanitiseFilename(fnImage), psIconWidth - (2 * psSpacer))
-		cwPicker.create_text((ixCol + 0.5) * psIconWidth, (ixRow + 1) * psIconHeight - (psTextHeight * 0.5), text=stTrimmed)
+		stTrimmed = SanitiseFilename(fnImage)
+		fwName = tkinter.Frame(cwPicker, width=psIconWidth, height=psTextHeight + psSpacer)
+		fwName.grid(row=ixRow+1, column=ixCol)
+		fwName.grid_propagate(False) # weird hackery needed just so we can force constraints on widgets :(
+
+		twName = tkinter.Text(fwName, borderwidth=0, highlightthickness=0)
+		twName.insert(tkinter.END, Elide(stTrimmed))
+		twName.grid(row=0, column=0)
+		twName.config(state=tkinter.DISABLED)
+
 		# if selected, draw a border on it
+		svSelectedFile.set(fnImage)
 		if fnImage == svSelectedFile.get():
 			cwPicker.create_line(ixCol * psIconWidth, ixRow * psIconHeight, ixCol * psIconWidth, (ixRow + 1) * psIconHeight, fill="red")
 			cwPicker.create_line((ixCol + 1) * psIconWidth, ixRow * psIconHeight, (ixCol + 1) * psIconWidth, (ixRow + 1) * psIconHeight, fill="red")
 		ixCol = ixCol + 1
 		ixCol = ixCol % scIconsPerRow 
 		if ixCol == 0:
-			ixRow = ixRow + 1
+			ixRow = ixRow + 2
 
 	# also on favourites (recent ones in sequence) - read sqlite db
 	# ...?
@@ -77,11 +98,21 @@ def DrawCanvas():
 def Close():
 	wwMain.destroy()
 
+def FileHasLine(fnFile, stCheck):
+	with open(fnFile, "r") as fpFile:
+		for stLine in fpFile:
+			if stCheck in stLine:
+				return True
+	return False
+
+def AppendFileWithLine(fnFile, stLine):
+	with open(fnFile, "a") as fpFile:
+		fpFile.write(stLine + "\n")
+
 def WriteI3():
-	# Write "exec --no-startup-id ~/.fehbg" to the file .config/i3/config
-	with open(I3_CONFIG, "a") as config:
-		config.write('# added by feh-browse\n')
-		config.write('exec --no-startup-id ~/.fehbg\n\n')
+	stLine = "exec --no-startup-id ~/.fehbg # added by feh-browse"
+	if not FileHasLine(I3_CONFIG, stLine):
+		AppendFileWithLine(I3_CONFIG, stLine + "\n")
 
 def SetBg():
 	arModes = ['scale', 'fill', 'max', 'center', 'tile']
@@ -107,9 +138,12 @@ def ScrollVertically(event):
 # sc - scalar value
 # ar - array
 # fn - filename
+# fp - file pointer
 # ix - index
 # ut - unsanitised text
 # st - sanitised text
+# lw - label widget
+# tw - text widget
 
 # Level 0 widget
 
