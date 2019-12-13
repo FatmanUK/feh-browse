@@ -13,9 +13,19 @@ MODE_CENTRE=3
 MODE_TILE=4
 
 BACKGROUND_COL='#ffffff'
+HIGHLIGHT_COL='#ff0000'
 
 DIRECTORY=os.path.expanduser('~/Wallpaper')
 I3_CONFIG=os.path.expanduser('~/.config/i3/config')
+
+# BUGS:
+# 1: (blocks alpha) figure out why picker won't draw a thumbnail - something going wrong in PIL I guess?
+# 2: (blocks alpha) redraw picker and recents on window resize/reflow and directory content change
+# 3: (blocks beta)  sanitise the filename properly
+# 4: (blocks beta)  proper elide function
+# 5: (blocks alpha) recents frame and UpdateRecents function
+# 6: (blocks alpha) actual recents update using SQLite database
+# 7: (blocks beta)  make scrollbars work properly on all windows. Something about focus?
 
 def SanitiseFilename(utText):
 	# TO DO: sanitise a filename and return a good version
@@ -24,104 +34,80 @@ def SanitiseFilename(utText):
 def Elide(stText, psLength = 0):
 	# elide a piece of text so that it's no wider than psLength pixels
 	# return the elided text
-	MAXLEN=17
+	MAXLEN=25
 	if len(stText) > MAXLEN:
 		stText = stText[0:MAXLEN] + '...'
 	return stText
 
-# redraw on events: resize/reflow, files changed in dir, selection changes
+def ClickedIcon(fnImage):
+	svSelectedFile.set(fnImage)
+	print('Selected: ' + svSelectedFile.get() + '!')
+	UpdatePicker()
+
+def UpdateRecent():
+	x=1
+
 def UpdatePicker():
 	cwPicker.update_idletasks()
+	fwPicker.update_idletasks()
+	# delete all widgets in picker frame
+	for w in fwPicker.winfo_children():
+		w.destroy()
 	# set loop variables
 	psCanvasWidth = cwPicker.winfo_width()
-	psIconWidth = 170	# total width including highlight but not text
-	psIconHeight = 120	# total height including highlight but not text
+	psIconWidth = 170 # total width including highlight but not text
+	psIconHeight = 120 # total height including highlight but not text
 	psTextHeight = 20
-	psPadWidth = 1
-	psPadHeight = 15
+	psPadWidth = 5
+	psPadHeight = 5
+	psHighlightWidth = 10
+	psHighlightHeight = 10
 	scIconsPerRow = math.floor(psCanvasWidth / psIconWidth)
 	ixCol = 0
 	ixRow = 0
-	# draw bits
-	temp0 = tkinter.Label(fwPicker, text="Hello!\nHello2!\nHello3!\nHello4!")
-	temp0.grid(row=0)
-	temp1 = tkinter.Label(fwPicker, text="Hello!\nHello2!\nHello3!\nHello4!")
-	temp1.grid(row=1)
-	temp2 = tkinter.Label(fwPicker, text="Hello!\nHello2!\nHello3!\nHello4!")
-	temp2.grid(row=2)
-	temp3 = tkinter.Label(fwPicker, text="Hello!\nHello2!\nHello3!\nHello4!")
-	temp3.grid(row=3)
-	temp4 = tkinter.Label(fwPicker, text="Hello!\nHello2!\nHello3!\nHello4!")
-	temp4.grid(row=4)
-	temp5 = tkinter.Label(fwPicker, text="Hello!\nHello2!\nHello3!\nHello4!")
-	temp5.grid(row=5)
-	temp6 = tkinter.Label(fwPicker, text="Hello!\nHello2!\nHello3!\nHello4!")
-	temp6.grid(row=6)
-	temp7 = tkinter.Label(fwPicker, text="Hello!\nHello2!\nHello3!\nHello4!")
-	temp7.grid(row=7)
-	temp8 = tkinter.Label(fwPicker, text="Hello!\nHello2!\nHello3!\nHello4!")
-	temp8.grid(row=8)
-	temp9 = tkinter.Label(fwPicker, text="Hello!\nHello2!\nHello3!\nHello4!")
-	temp9.grid(row=9)
-	temp10 = tkinter.Label(fwPicker, text="Hello!\nHello2!\nHello3!\nHello4!")
-	temp10.grid(row=10)
-	temp11 = tkinter.Label(fwPicker, text="Hello!\nHello2!\nHello3!\nHello4!")
-	temp11.grid(row=11)
-	temp12 = tkinter.Label(fwPicker, text="Hello!\nHello2!\nHello3!\nHello4!")
-	temp12.grid(row=12)
-	temp13 = tkinter.Label(fwPicker, text="Hello!\nHello2!\nHello3!\nHello4!")
-	temp13.grid(row=13)
-
 	# scan directory
 	if not os.path.exists(DIRECTORY):
 		os.makedirs(DIRECTORY, exist_ok=True)
 	arFiles = sorted(os.listdir(DIRECTORY))
 	for fnImage in arFiles:
 		# create highlight frame
-		print(fnImage)
+		if fnImage == svSelectedFile.get():
+			fwHilit = tkinter.Frame(fwPicker, borderwidth=0, background=HIGHLIGHT_COL, width=psIconWidth, height=psIconHeight)
+		else:
+			fwHilit = tkinter.Frame(fwPicker, borderwidth=0, background=BACKGROUND_COL, width=psIconWidth, height=psIconHeight)
+		fwHilit.grid(row=(ixRow * 3), column=(ixCol * 2))
+		fwHilit.bind("<Button-1>", lambda event, a=fnImage:
+						ClickedIcon(a))
+		# create spacer
+		fwSpacer = tkinter.Frame(fwPicker, borderwidth=0, background=BACKGROUND_COL, width=psPadWidth, height=psPadHeight)
+		fwSpacer.grid(row=(ixRow * 3) + 2, column=(ixCol * 2) + 1)
+		# output
+		stName = Elide(SanitiseFilename(fnImage))
+		# create a thumbnail, draw centred inside highlight frame (process symlinks correctly)
+		# if this fails, (should probably check this earlier and 'continue', but for now just) skip
+		imThumb = None
+		try:
+			fnReal = os.path.realpath(DIRECTORY + '/' + fnImage)
+			imThumb = Image.open(fnReal)
+			imThumb.thumbnail((psIconWidth, psIconHeight), Image.ANTIALIAS)
+			imTkThumb = ImageTk.PhotoImage(imThumb)
+			lwIcon = tkinter.Label(fwHilit, image=imTkThumb, width=psIconWidth-psHighlightWidth, height=psIconHeight-psHighlightHeight)
+			# slightly dodgy using place within grid I know, but it works :)
+			lwIcon.place(relx=0.5, rely=0.5, anchor="center")
+			lwIcon.bind("<Button-1>", lambda event, a=fnImage:
+							ClickedIcon(a))
+		except OSError:
+			stName = "Unknown file type!"
+		except:
+			x=1
+		# add label widget
+		lwName = tkinter.Label(fwPicker, text=stName)
+		lwName.grid(row=(ixRow * 3) + 1, column=(ixCol * 2))
+		# end of loop
 		ixCol = ixCol + 1
 		ixCol = ixCol % scIconsPerRow
 		if ixCol == 0:
 			ixRow = ixRow + 1
-
-#	for fnImage in arFiles:
-#		# create a thumbnail of fnImage and draw on canvas - process symlinks correctly
-#		# make clickable :o on click, set svSelectedFile and redraw
-#		imThumb = None
-#		JpegImagePlugin.DEBUG = True
-#		try:
-#			fnReal = os.path.realpath(DIRECTORY + '/' + fnImage)
-#			print(fnReal)
-#			imThumb = Image.open(fnReal)
-#			imThumb.thumbnail((psIconWidth, psIconHeight), Image.ANTIALIAS)
-#			imTkThumb = ImageTk.PhotoImage(imThumb)
-#			lwIcon = tkinter.Label(cwPicker, image=imTkThumb)
-#		except OSError:
-#			print("OS error! " + fnReal)
-# OSError: can't identify file type
-#			lwIcon = tkinter.Label(cwPicker, text="image not found")
-#		except:
-#			print("other exception!")
-#		lwIcon.grid(row=ixRow, column=ixCol)
-#		# show trimmed down filename
-#		stTrimmed = SanitiseFilename(fnImage)
-#		fwName = tkinter.Frame(cwPicker, width=psIconWidth, height=psTextHeight + psSpacer)
-#		fwName.grid(row=ixRow+1, column=ixCol)
-#		fwName.grid_propagate(False) # weird hackery needed just so we can force constraints on widgets :(
-#
-#		twName = tkinter.Text(fwName, borderwidth=0, highlightthickness=0)
-#		twName.insert(tkinter.END, Elide(stTrimmed))
-#		twName.grid(row=0, column=0)
-#		twName.config(state=tkinter.DISABLED)
-#
-#		# if selected, draw a border on it
-#		svSelectedFile.set(fnImage)
-#		if fnImage == svSelectedFile.get():
-#			cwPicker.create_line(ixCol * psIconWidth, ixRow * psIconHeight, ixCol * psIconWidth, (ixRow + 1) * psIconHeight, fill="red")
-#			cwPicker.create_line((ixCol + 1) * psIconWidth, ixRow * psIconHeight, (ixCol + 1) * psIconWidth, (ixRow + 1) * psIconHeight, fill="red")
-#
-#	# also on favourites (recent ones in sequence) - read sqlite db
-#	# ...?
 
 def Close():
 	wwMain.destroy()
@@ -145,7 +131,7 @@ def WriteI3():
 def SetBg():
 	arModes = ['scale', 'fill', 'max', 'center', 'tile']
 	subprocess.call(['/bin/feh', '--bg-' + arModes[rvMode.get()], DIRECTORY + '/' + svSelectedFile.get()])
-	# TO DO: add to favourites list and save in sqlite db - if fails, don't worry about it, just warn
+	# TO DO: add to recents list and save in sqlite db - if fails, don't worry about it, just warn
 
 def ScrollHorizontally(event):
 	cwFavourites.xview_scroll((event.delta / 120), "units")
@@ -183,8 +169,6 @@ def ConstrainRecentScroll(event):
 
 wwMain = tkinter.Tk()
 wwMain.configure(background=BACKGROUND_COL)
-#wwMain.rowconfigure(0, weight=1)
-#wwMain.rowconfigure(1, weight=1)
 wwMain.rowconfigure(2, weight=3)
 wwMain.columnconfigure(0, weight=1) # needed to fill out column
 
@@ -220,7 +204,7 @@ fwOptions.grid_propagate(False)
 
 # Level 2 widgets
 
-fwPicker = tkinter.Frame(cwPicker, borderwidth=1, relief='sunken', background=BACKGROUND_COL)
+fwPicker = tkinter.Frame(cwPicker, borderwidth=0, relief='sunken', background=BACKGROUND_COL)
 cwPicker.create_window((0, 0), window=fwPicker, anchor="nw")
 fwPicker.rowconfigure(0, weight=1)
 fwPicker.columnconfigure(0, weight=1)
