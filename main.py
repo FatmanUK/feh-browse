@@ -6,6 +6,8 @@ import subprocess
 import math
 from PIL import Image, ImageTk, JpegImagePlugin
 
+TITLE="feh-browse"
+
 MODE_SCALE=0
 MODE_FILL=1
 MODE_MAX=2
@@ -70,6 +72,16 @@ def UpdatePicker():
 		os.makedirs(DIRECTORY, exist_ok=True)
 	arFiles = sorted(os.listdir(DIRECTORY))
 	for fnImage in arFiles:
+		# check file is ok
+		imThumb = None
+		try:
+			fnReal = os.path.realpath(DIRECTORY + '/' + fnImage)
+			print("Real filename: " + fnReal)
+			imThumb = Image.open(fnReal)
+			imThumb.convert('RGB')
+			imThumb.thumbnail((psIconWidth, psIconHeight), Image.ANTIALIAS)
+		except:
+			continue
 		# create highlight frame
 		if fnImage == svSelectedFile.get():
 			fwHilit = tkinter.Frame(fwPicker, borderwidth=0, background=HIGHLIGHT_COL, width=psIconWidth, height=psIconHeight)
@@ -84,12 +96,8 @@ def UpdatePicker():
 		# output
 		stName = Elide(SanitiseFilename(fnImage))
 		# create a thumbnail, draw centred inside highlight frame (process symlinks correctly)
-		# if this fails, (should probably check this earlier and 'continue', but for now just) skip
-		imThumb = None
 		try:
-			fnReal = os.path.realpath(DIRECTORY + '/' + fnImage)
-			imThumb = Image.open(fnReal)
-			imThumb.thumbnail((psIconWidth, psIconHeight), Image.ANTIALIAS)
+#			imThumb2 = imThumb.thumbnail((psIconWidth, psIconHeight), Image.ANTIALIAS)
 			imTkThumb = ImageTk.PhotoImage(imThumb)
 			lwIcon = tkinter.Label(fwHilit, image=imTkThumb, width=psIconWidth-psHighlightWidth, height=psIconHeight-psHighlightHeight)
 			# slightly dodgy using place within grid I know, but it works :)
@@ -139,6 +147,10 @@ def ScrollHorizontally(event):
 def ScrollVertically(event):
 	cwPicker.yview_scroll((event.delta / 120), "units")
 
+def ResizeWindow(event):
+	# TO DO: work out how to resize without crashing
+	print("resize")
+
 def ConstrainPickerScroll(event):
 	cwPicker.configure(scrollregion=cwPicker.bbox("all"))
 
@@ -168,6 +180,7 @@ def ConstrainRecentScroll(event):
 # Level 0 widget
 
 wwMain = tkinter.Tk()
+wwMain.title(TITLE)
 wwMain.configure(background=BACKGROUND_COL)
 wwMain.rowconfigure(2, weight=3)
 wwMain.columnconfigure(0, weight=1) # needed to fill out column
@@ -263,6 +276,8 @@ wwMain.bind_all('<MouseWheel>', ScrollVertically)
 wwMain.bind_all('<Shift-MouseWheel>', ScrollHorizontally)
 
 # TO DO: expand the scrollwheel binding to all widgets not just the scrollbars.
+
+wwMain.bind('<Configure>', ResizeWindow)
 
 wwMain.mainloop()
 
