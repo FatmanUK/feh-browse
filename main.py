@@ -1,10 +1,16 @@
 #!/bin/python
 
+import gi
+gi.require_version('Gtk', '3.0')
+gi.require_version('GdkPixbuf', '2.0')
+
 import tkinter
 import os
 import subprocess
 import math
-from PIL import Image, ImageTk, JpegImagePlugin
+from PIL import ImageTk
+
+from gi.repository.GdkPixbuf import Pixbuf, InterpType
 
 TITLE="feh-browse"
 
@@ -19,9 +25,9 @@ HIGHLIGHT_COL='#ff0000'
 
 DIRECTORY=os.path.expanduser('~/Wallpaper')
 I3_CONFIG=os.path.expanduser('~/.config/i3/config')
+DIR_THUMBS=os.path.expanduser('~/.thumbs')
 
 # BUGS:
-# 1: (blocks alpha) figure out why picker won't draw a thumbnail - something going wrong in PIL I guess?
 # 2: (blocks alpha) redraw picker and recents on window resize/reflow and directory content change
 # 3: (blocks beta)  sanitise the filename properly
 # 4: (blocks beta)  proper elide function
@@ -74,14 +80,6 @@ def UpdatePicker():
 	for fnImage in arFiles:
 		# check file is ok
 		imThumb = None
-		try:
-			fnReal = os.path.realpath(DIRECTORY + '/' + fnImage)
-			print("Real filename: " + fnReal)
-			imThumb = Image.open(fnReal)
-			imThumb.convert('RGB')
-			imThumb.thumbnail((psIconWidth, psIconHeight), Image.ANTIALIAS)
-		except:
-			continue
 		# create highlight frame
 		if fnImage == svSelectedFile.get():
 			fwHilit = tkinter.Frame(fwPicker, borderwidth=0, background=HIGHLIGHT_COL, width=psIconWidth, height=psIconHeight)
@@ -95,15 +93,29 @@ def UpdatePicker():
 		fwSpacer.grid(row=(ixRow * 3) + 2, column=(ixCol * 2) + 1)
 		# output
 		stName = Elide(SanitiseFilename(fnImage))
-		# create a thumbnail, draw centred inside highlight frame (process symlinks correctly)
+		# check thumbnail exists
+		# pb = pixbuf
+		pbThumb = None
+		fnThumb = DIR_THUMBS + '/' + fnImage + '.png'
+		if not os.path.isfile(fnThumb):
+			# create thumbnail
+			pbThumb = Pixbuf.new_from_file(DIRECTORY + '/' + fnImage)
+			psWidth = psIconWidth - (2 * psHighlightWidth)
+			psHeight = psIconHeight - (2 * psHighlightHeight)
+			pbThumb = pbThumb.scale_simple(psWidth, psHeight, InterpType.NEAREST)
+			pbThumb.savev(fnThumb, 'png', [], [])
+		# TO DO: make sure we processed symlinks correctly
+		# draw centred inside highlight frame
 		try:
-#			imThumb2 = imThumb.thumbnail((psIconWidth, psIconHeight), Image.ANTIALIAS)
-			imTkThumb = ImageTk.PhotoImage(imThumb)
-			lwIcon = tkinter.Label(fwHilit, image=imTkThumb, width=psIconWidth-psHighlightWidth, height=psIconHeight-psHighlightHeight)
+			# load thumbnail
 			# slightly dodgy using place within grid I know, but it works :)
+			lwIcon = tkinter.Label(fwHilit)
 			lwIcon.place(relx=0.5, rely=0.5, anchor="center")
 			lwIcon.bind("<Button-1>", lambda event, a=fnImage:
 							ClickedIcon(a))
+			imTkThumb = ImageTk.PhotoImage(file=fnThumb)
+			lwIcon.configure(image=imTkThumb)
+			lwIcon.image = imTkThumb # apparently PIL has a reference counting bug which causes the image to be garbage collected before it's used? See comment in https://github.com/NabaSadiaSiddiqui/Mausam/blob/master/Entry.py, line 110
 		except OSError:
 			stName = "Unknown file type!"
 		except:
@@ -176,6 +188,10 @@ def ConstrainRecentScroll(event):
 # st - sanitised text
 # lw - label widget
 # tw - text widget
+
+if not os.path.isdir(DIR_THUMBS):
+	# create .thumbs dir if absent, 0700 preferred
+	os.mkdir(DIR_THUMBS, 0o700)
 
 # Level 0 widget
 
