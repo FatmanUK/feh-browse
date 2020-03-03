@@ -6,6 +6,8 @@ from icontile import *
 import math
 import subprocess
 
+import sqlite3
+
 TITLE="feh-browse"
 
 MODE_SCALE=0
@@ -19,14 +21,15 @@ HIGHLIGHT_COL='#ff6600'
 
 DIRECTORY=os.path.expanduser('~/Wallpaper')
 I3_CONFIG=os.path.expanduser('~/.config/i3/config')
+DB_PATH=os.path.expanduser('~/.feh-browse.sqlite')
 
 # BUGS:
-# 2: (blocks alpha) redraw picker and recents on window resize
 # 3: (blocks beta)  sanitise the filename properly
 # 4: (blocks beta)  proper elide function
-# 5: (blocks alpha) recents frame and UpdateRecents function
-# 6: (blocks alpha) actual recents update using SQLite database
 # 7: (blocks beta)  make scrollbars work properly on all windows. Something about focus?
+# 9: odd behaviour marked with ':o' - investigate
+
+# TO DO: test with JPG, PNG, GIF, BMP, TIF image types
 
 def SanitiseFilename(utText):
 	# TO DO: sanitise a filename and return a good version
@@ -42,18 +45,14 @@ def Elide(stText, psLength = 0):
 
 def ClickedIcon(fnImage):
 	svSelectedFile.set(fnImage)
-#	eprint('Selected: ' + svSelectedFile.get() + '!')
 	UpdatePicker()
-
-def UpdateRecent():
-	# TO DO: this
-	x=1
 
 def DeleteAllWidgetsIn(fwFrame):
 	for w in fwFrame.winfo_children():
 		w.destroy()
 
 def CreateHighlightFrame(fwPicker, fnImage, psIconWidth, psIconHeight, ixRow, ixCol):
+	fwHilit = None
 	if fnImage == svSelectedFile.get():
 		fwHilit = tkinter.Frame(fwPicker, borderwidth=0, background=HIGHLIGHT_COL, width=psIconWidth, height=psIconHeight)
 	else:
@@ -69,25 +68,37 @@ def CreateSpacer(fwPicker, ixRow, ixCol):
 	fwSpacer.grid(row=(ixRow * 3) + 2, column=(ixCol * 2) + 1)
 
 def CreateOutput(fnImage, psIconWidth, psIconHeight, fwHilit, ixRow, ixCol):
-	psHighlightWidth = 4
-	psHighlightHeight = 4
-	stName = Elide(SanitiseFilename(fnImage))
-	i = IconTile(DIRECTORY, fnImage, psIconWidth - (2 * psHighlightWidth), psIconHeight - (2 * psHighlightHeight))
+	i = IconTile(DIRECTORY, fnImage, psIconWidth, psIconHeight)
 	lwIcon = tkinter.Label(fwHilit)
 	lwIcon.bind("<Button-1>", lambda event, a=fnImage:ClickedIcon(a))
 	# slightly dodgy using place within grid I know, but it works :)
 	lwIcon.place(relx=0.5, rely=0.5, anchor="center")
-	try:
-		i.draw(lwIcon)
-	except OSError:
-		stName = "Unknown file type!"
-	except:
-		x=1
-	# TO DO: tooltip with full name? Remove text label then?
-	# add label widget
-	lwName = tkinter.Label(fwPicker, text=stName)
-	lwName.grid(row=(ixRow * 3) + 1, column=(ixCol * 2))
+	i.draw(lwIcon)
 
+def UpdateRecent():
+	cwRecent.update_idletasks()
+	fwRecent.update_idletasks()
+	DeleteAllWidgetsIn(fwRecent)
+	arFiles = []
+	try:
+		conn = sqlite3.connect(DB_PATH)
+		curs = conn.cursor()
+		arResults = curs.execute('SELECT file FROM recents ORDER BY id DESC;')
+		for drRow in arResults:
+			arFiles.append(drRow[0])
+		conn.close()
+	except:
+		eprint('Database operations failed. Check file permissions on %s?' % DB_PATH)
+	psIconWidth = 150 # width of thumbnail
+	psIconHeight = 100 # height of thumbnail
+	psBorder = 4
+	ixRow = 0
+	# indexes seem to be reversed - why? :o also 4* instead of 2*?
+	for fnImage in arFiles:
+		fwHilit = CreateHighlightFrame(fwRecent, fnImage, psIconWidth + (4 * psBorder), psIconHeight + (4 * psBorder), 0, ixRow)
+		CreateSpacer(fwRecent, 0, ixRow)
+		CreateOutput(fnImage, psIconWidth, psIconHeight, fwHilit, 0, ixRow)
+		ixRow = ixRow + 1
 
 def UpdatePicker():
 	cwPicker.update_idletasks()
@@ -95,10 +106,11 @@ def UpdatePicker():
 	DeleteAllWidgetsIn(fwPicker)
 	# set loop variables
 	psCanvasWidth = cwPicker.winfo_width()
-	psIconWidth = 158 # total width including highlight
-	psIconHeight = 108 # total height including highlight (but not text)
+	psIconWidth = 150 # width of thumbnail
+	psIconHeight = 100 # height of thumbnail
+	psBorder = 4
 	psTextHeight = 20
-	scIconsPerRow = math.floor(psCanvasWidth / psIconWidth)
+	scIconsPerRow = math.floor(psCanvasWidth / (psIconWidth + (2 * psBorder)))
 	ixCol = 0
 	ixRow = 0
 	# scan directory
@@ -106,9 +118,20 @@ def UpdatePicker():
 		os.makedirs(DIRECTORY, exist_ok=True)
 	arFiles = sorted(os.listdir(DIRECTORY))
 	for fnImage in arFiles:
-		fwHilit = CreateHighlightFrame(fwPicker, fnImage, psIconWidth, psIconHeight, ixRow, ixCol)
+		# has to be 4* not 2* - why? :o
+		fwHilit = CreateHighlightFrame(fwPicker, fnImage, psIconWidth + (4 * psBorder), psIconHeight + (4 * psBorder), ixRow, ixCol)
 		CreateSpacer(fwPicker, ixRow, ixCol)
-		CreateOutput(fnImage, psIconWidth, psIconHeight, fwHilit, ixRow, ixCol)
+		stName = Elide(SanitiseFilename(fnImage))
+		try:
+			CreateOutput(fnImage, psIconWidth, psIconHeight, fwHilit, ixRow, ixCol)
+		except OSError:
+			stName = "Unknown file type!"
+		except:
+			x=1
+		# TO DO: tooltip with full name? Remove text label then?
+		# add label widget
+		lwName = tkinter.Label(fwPicker, text=stName)
+		lwName.grid(row=(ixRow * 3) + 1, column=(ixCol * 2))
 		ixCol = ixCol + 1
 		ixCol = ixCol % scIconsPerRow
 		if ixCol == 0:
@@ -136,8 +159,18 @@ def WriteI3():
 def SetBg():
 	arModes = ['scale', 'fill', 'max', 'center', 'tile']
 	subprocess.call(['/bin/feh', '--bg-' + arModes[rvMode.get()], DIRECTORY + '/' + svSelectedFile.get()])
-	# TO DO: add to recents list and save in sqlite db - if fails, don't worry about it, just warn
-	# TO DO: add to recents frame, database and update recents
+	try:
+		arFile = (svSelectedFile.get(), )
+		conn = sqlite3.connect(DB_PATH)
+		curs = conn.cursor()
+		curs.execute('CREATE TABLE IF NOT EXISTS recents (id INTEGER PRIMARY KEY AUTOINCREMENT, file VARCHAR(1024));')
+		curs.execute('DELETE FROM recents WHERE file=?;', arFile)
+		curs.execute('INSERT INTO recents (file) VALUES (?);', arFile)
+		conn.commit()
+		conn.close()
+	except:
+		eprint('Database operations failed. Check file permissions on %s?' % DB_PATH)
+	UpdateRecent()
 
 def ScrollHorizontally(event):
 	cwFavourites.xview_scroll((event.delta / 120), "units")
@@ -145,10 +178,11 @@ def ScrollHorizontally(event):
 def ScrollVertically(event):
 	cwPicker.yview_scroll((event.delta / 120), "units")
 
-def ResizeWindow(event):
-	# TO DO: work out how to resize without crashing
-	#eprint("resize")
-	x=1
+#def ResizeWindow(event):
+#	# TO DO: work out how to resize without crashing
+#	eprint("resize")
+#	#UpdatePicker and UpdateRecent but crashes with X error
+#	x=1
 
 def ConstrainPickerScroll(event):
 	cwPicker.configure(scrollregion=cwPicker.bbox("all"))
@@ -175,6 +209,7 @@ def ConstrainRecentScroll(event):
 # st - sanitised text
 # lw - label widget
 # tw - text widget
+# dr - db row
 
 # Level 0 widget
 
@@ -269,13 +304,14 @@ bwI3Config.grid(row=1, column=3)
 # Level 3 widgets
 
 UpdatePicker()
+UpdateRecent()
 
 #wwMain.bind_all('<MouseWheel>', ScrollVertically)
 #wwMain.bind_all('<Shift-MouseWheel>', ScrollHorizontally)
 
 # TO DO: expand the scrollwheel binding to all widgets not just the scrollbars.
 
-wwMain.bind('<Configure>', ResizeWindow)
+#wwMain.bind('<Configure>', ResizeWindow)
 
 wwMain.mainloop()
 
