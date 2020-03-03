@@ -15,7 +15,7 @@ MODE_CENTRE=3
 MODE_TILE=4
 
 BACKGROUND_COL='#dddddd'
-HIGHLIGHT_COL='#ff0000'
+HIGHLIGHT_COL='#ff6600'
 
 DIRECTORY=os.path.expanduser('~/Wallpaper')
 I3_CONFIG=os.path.expanduser('~/.config/i3/config')
@@ -69,8 +69,8 @@ def CreateSpacer(fwPicker, ixRow, ixCol):
 	fwSpacer.grid(row=(ixRow * 3) + 2, column=(ixCol * 2) + 1)
 
 def CreateOutput(fnImage, psIconWidth, psIconHeight, fwHilit, ixRow, ixCol):
-	psHighlightWidth = 10
-	psHighlightHeight = 10
+	psHighlightWidth = 4
+	psHighlightHeight = 4
 	stName = Elide(SanitiseFilename(fnImage))
 	i = IconTile(DIRECTORY, fnImage, psIconWidth - (2 * psHighlightWidth), psIconHeight - (2 * psHighlightHeight))
 	lwIcon = tkinter.Label(fwHilit)
@@ -95,8 +95,8 @@ def UpdatePicker():
 	DeleteAllWidgetsIn(fwPicker)
 	# set loop variables
 	psCanvasWidth = cwPicker.winfo_width()
-	psIconWidth = 170 # total width including highlight
-	psIconHeight = 120 # total height including highlight (but not text)
+	psIconWidth = 158 # total width including highlight
+	psIconHeight = 108 # total height including highlight (but not text)
 	psTextHeight = 20
 	scIconsPerRow = math.floor(psCanvasWidth / psIconWidth)
 	ixCol = 0
@@ -147,7 +147,8 @@ def ScrollVertically(event):
 
 def ResizeWindow(event):
 	# TO DO: work out how to resize without crashing
-	eprint("resize")
+	#eprint("resize")
+	x=1
 
 def ConstrainPickerScroll(event):
 	cwPicker.configure(scrollregion=cwPicker.bbox("all"))
