@@ -3,9 +3,10 @@
 from stderr import *
 from icontile import *
 
+import tkinter
+import sys
 import math
 import subprocess
-
 import sqlite3
 
 TITLE="feh-browse"
@@ -26,7 +27,8 @@ DB_PATH=os.path.expanduser('~/.feh-browse.sqlite')
 # BUGS:
 # 3: (blocks beta)  sanitise the filename properly
 # 4: (blocks beta)  proper elide function
-# 7: (blocks beta)  make scrollbars work properly on all windows. Something about focus?
+# 7: (blocks beta)  make scrollbars work properly on all windows. Something
+#                   about focus?
 # 9: odd behaviour marked with ':o' - investigate
 
 # TO DO: test with JPG, PNG, GIF, BMP, TIF image types
@@ -44,16 +46,16 @@ def Elide(stText, psLength = 0):
 	return stText
 
 def ClickedIcon(fnImage):
-	svSelectedFile.set(fnImage)
+	wwMain.svSelectedFile.set(fnImage)
 	UpdatePicker()
 
 def DeleteAllWidgetsIn(fwFrame):
 	for w in fwFrame.winfo_children():
 		w.destroy()
 
-def CreateHighlightFrame(fwPicker, fnImage, psIconWidth, psIconHeight, ixRow, ixCol):
+def CreateHighlightFrame(wwMain, fwPicker, fnImage, psIconWidth, psIconHeight, ixRow, ixCol):
 	fwHilit = None
-	if fnImage == svSelectedFile.get():
+	if fnImage == wwMain.svSelectedFile.get():
 		fwHilit = tkinter.Frame(fwPicker, borderwidth=0, background=HIGHLIGHT_COL, width=psIconWidth, height=psIconHeight)
 	else:
 		fwHilit = tkinter.Frame(fwPicker, borderwidth=0, background=BACKGROUND_COL, width=psIconWidth, height=psIconHeight)
@@ -75,7 +77,14 @@ def CreateOutput(fnImage, psIconWidth, psIconHeight, fwHilit, ixRow, ixCol):
 	lwIcon.place(relx=0.5, rely=0.5, anchor="center")
 	i.draw(lwIcon)
 
-def UpdateRecent():
+def UpdateRecent(wwMain):
+	# find level ones
+	cwPicker = wwMain.nametowidget("cwPicker")
+	cwRecent = wwMain.nametowidget("cwRecent")
+	fwOptions = wwMain.nametowidget("fwOptions")
+
+	fwRecent = cwRecent.nametowidget("fwRecent")
+
 	cwRecent.update_idletasks()
 	fwRecent.update_idletasks()
 	DeleteAllWidgetsIn(fwRecent)
@@ -95,12 +104,19 @@ def UpdateRecent():
 	ixRow = 0
 	# indexes seem to be reversed - why? :o also 4* instead of 2*?
 	for fnImage in arFiles:
-		fwHilit = CreateHighlightFrame(fwRecent, fnImage, psIconWidth + (4 * psBorder), psIconHeight + (4 * psBorder), 0, ixRow)
+		fwHilit = CreateHighlightFrame(wwMain, fwRecent, fnImage, psIconWidth + (4 * psBorder), psIconHeight + (4 * psBorder), 0, ixRow)
 		CreateSpacer(fwRecent, 0, ixRow)
 		CreateOutput(fnImage, psIconWidth, psIconHeight, fwHilit, 0, ixRow)
 		ixRow = ixRow + 1
 
-def UpdatePicker():
+def UpdatePicker(wwMain):
+	# find level ones
+	cwPicker = wwMain.nametowidget("cwPicker")
+	cwRecent = wwMain.nametowidget("cwRecent")
+	fwOptions = wwMain.nametowidget("fwOptions")
+
+	fwPicker = cwPicker.nametowidget("fwPicker")
+
 	cwPicker.update_idletasks()
 	fwPicker.update_idletasks()
 	DeleteAllWidgetsIn(fwPicker)
@@ -119,7 +135,7 @@ def UpdatePicker():
 	arFiles = sorted(os.listdir(DIRECTORY))
 	for fnImage in arFiles:
 		# has to be 4* not 2* - why? :o
-		fwHilit = CreateHighlightFrame(fwPicker, fnImage, psIconWidth + (4 * psBorder), psIconHeight + (4 * psBorder), ixRow, ixCol)
+		fwHilit = CreateHighlightFrame(wwMain, fwPicker, fnImage, psIconWidth + (4 * psBorder), psIconHeight + (4 * psBorder), ixRow, ixCol)
 		CreateSpacer(fwPicker, ixRow, ixCol)
 		stName = Elide(SanitiseFilename(fnImage))
 		try:
@@ -158,9 +174,9 @@ def WriteI3():
 
 def SetBg():
 	arModes = ['scale', 'fill', 'max', 'center', 'tile']
-	subprocess.call(['/bin/feh', '--bg-' + arModes[rvMode.get()], DIRECTORY + '/' + svSelectedFile.get()])
+	subprocess.call(['/bin/feh', '--bg-' + arModes[wwMain.rvMode.get()], DIRECTORY + '/' + wwMain.svSelectedFile.get()])
 	try:
-		arFile = (svSelectedFile.get(), )
+		arFile = (wwMain.svSelectedFile.get(), )
 		conn = sqlite3.connect(DB_PATH)
 		curs = conn.cursor()
 		curs.execute('CREATE TABLE IF NOT EXISTS recents (id INTEGER PRIMARY KEY AUTOINCREMENT, file VARCHAR(1024));')
@@ -211,107 +227,100 @@ def ConstrainRecentScroll(event):
 # tw - text widget
 # dr - db row
 
-# Level 0 widget
+def WidgetsLevelZero():
+	wwMain = tkinter.Tk()
+	wwMain.title(TITLE)
+	wwMain.rowconfigure(2, weight=3)
+	wwMain.columnconfigure(0, weight=1) # needed to fill out column
+	return wwMain
 
-wwMain = tkinter.Tk()
-wwMain.title(TITLE)
-wwMain.rowconfigure(2, weight=3)
-wwMain.columnconfigure(0, weight=1) # needed to fill out column
+def WidgetsLevelOne(wwMain):
+	cwPicker = tkinter.Canvas(wwMain, background=BACKGROUND_COL, name='cwPicker')
+	cwPicker.grid(row=2, sticky="news")
+	cwPicker.rowconfigure(0, weight=1)
+	cwPicker.columnconfigure(0, weight=1)
+	cwPicker.grid_propagate(False)
+	cwRecent = tkinter.Canvas(wwMain, background=BACKGROUND_COL, name='cwRecent', height=150)
+	cwRecent.grid(row=0, sticky="new")
+	cwRecent.rowconfigure(0, weight=1)
+	cwRecent.columnconfigure(0, weight=1)
+	cwRecent.grid_propagate(False)
+	cwPicker.update_idletasks()
+	fwOptions = tkinter.Frame(wwMain, borderwidth=1, relief='sunken', background=BACKGROUND_COL, height=50, name='fwOptions')
+	fwOptions.grid(row=1, sticky="ew")
+	fwOptions.rowconfigure(0, weight=1)
+	fwOptions.rowconfigure(1, weight=1)
+	fwOptions.columnconfigure(0, weight=1)
+	fwOptions.columnconfigure(1, weight=1)
+	fwOptions.columnconfigure(2, weight=1)
+	fwOptions.columnconfigure(3, weight=1)
+	fwOptions.columnconfigure(4, weight=1)
+	fwOptions.grid_propagate(False)
 
-svSelectedFile = tkinter.StringVar() # put current selection filename in here
-rvMode = tkinter.IntVar()
+def WidgetsLevelTwo(wwMain):
+	# find level ones
+	cwPicker = wwMain.nametowidget("cwPicker")
+	cwRecent = wwMain.nametowidget("cwRecent")
+	fwOptions = wwMain.nametowidget("fwOptions")
 
-# Level 1 widgets
+	fwPicker = tkinter.Frame(cwPicker, borderwidth=0, relief='sunken', background=BACKGROUND_COL, name='fwPicker')
+	cwPicker.create_window((0, 0), window=fwPicker, anchor="nw")
+	fwPicker.rowconfigure(0, weight=1)
+	fwPicker.columnconfigure(0, weight=1)
+	swPicker = tkinter.Scrollbar(cwPicker, orient="vertical", command=cwPicker.yview)
+	swPicker.grid(row=0, column=1, sticky="ns")
+	cwPicker.configure(yscrollcommand=swPicker.set)
+	swPicker.columnconfigure(0, weight=1)
+	fwPicker.bind('<Configure>', ConstrainPickerScroll)
+	fwRecent = tkinter.Frame(cwRecent, borderwidth=1, relief='sunken', background=BACKGROUND_COL, name='fwRecent')
+	cwRecent.create_window((0, 0), window=fwRecent, anchor="nw")
+	fwRecent.rowconfigure(0, weight=1)
+	fwRecent.columnconfigure(0, weight=1)
+	swRecent = tkinter.Scrollbar(cwRecent, orient="horizontal", command=cwRecent.yview)
+	swRecent.grid(row=1, column=0, sticky="ew")
+	cwRecent.configure(yscrollcommand=swRecent.set)
+	swRecent.columnconfigure(0, weight=1)
+	fwRecent.bind('<Configure>', ConstrainRecentScroll)
+	rwModeScale = tkinter.Radiobutton(fwOptions, text='Scale', variable=wwMain.rvMode, value=MODE_SCALE, height=1)
+	rwModeFill = tkinter.Radiobutton(fwOptions, text='Fill', variable=wwMain.rvMode, value=MODE_FILL)
+	rwModeMax = tkinter.Radiobutton(fwOptions, text='Max', variable=wwMain.rvMode, value=MODE_MAX)
+	rwModeCentre = tkinter.Radiobutton(fwOptions, text='Centre', variable=wwMain.rvMode, value=MODE_CENTRE)
+	rwModeTile = tkinter.Radiobutton(fwOptions, text='Tile', variable=wwMain.rvMode, value=MODE_TILE)
+	rwModeScale.configure(background=BACKGROUND_COL)
+	rwModeFill.configure(background=BACKGROUND_COL)
+	rwModeMax.configure(background=BACKGROUND_COL)
+	rwModeCentre.configure(background=BACKGROUND_COL)
+	rwModeTile.configure(background=BACKGROUND_COL)
+	rwModeScale.grid(row=0, column=0, sticky="news")
+	rwModeFill.grid(row=0, column=1, sticky="news")
+	rwModeMax.grid(row=0, column=2, sticky="news")
+	rwModeCentre.grid(row=0, column=3, sticky="news")
+	rwModeTile.grid(row=0, column=4, sticky="news")
+	bwDoIt = tkinter.Button(fwOptions, text="Set Background", command=SetBg)
+	bwDoIt.grid(row=1, column=1)
+	# TO DO: get wwMain into these bound function calls
+	bwQuit = tkinter.Button(fwOptions, text="Close", command=Close)
+	bwQuit.grid(row=1, column=2)
+	bwI3Config = tkinter.Button(fwOptions, text="Add to i3", command=WriteI3)
+	bwI3Config.grid(row=1, column=3)
 
-cwPicker = tkinter.Canvas(wwMain, background=BACKGROUND_COL)
-cwPicker.grid(row=2, sticky="news")
-cwPicker.rowconfigure(0, weight=1)
-cwPicker.columnconfigure(0, weight=1)
-cwPicker.grid_propagate(False)
+def WidgetsLevelThree(wwMain):
+	UpdatePicker(wwMain)
+	UpdateRecent(wwMain)
+	#wwMain.bind_all('<MouseWheel>', ScrollVertically)
+	#wwMain.bind_all('<Shift-MouseWheel>', ScrollHorizontally)
+	# TO DO: expand the scrollwheel binding to all widgets not just the scrollbars.
+	#wwMain.bind('<Configure>', ResizeWindow)
 
-cwRecent = tkinter.Canvas(wwMain, background=BACKGROUND_COL, height=150)
-cwRecent.grid(row=0, sticky="new")
-cwRecent.rowconfigure(0, weight=1)
-cwRecent.columnconfigure(0, weight=1)
-cwRecent.grid_propagate(False)
+def run_project(args):
+	wwMain = WidgetsLevelZero()
+	wwMain.rvMode = tkinter.IntVar()
+	wwMain.svSelectedFile = tkinter.StringVar()
+	WidgetsLevelOne(wwMain)
+	WidgetsLevelTwo(wwMain)
+	WidgetsLevelThree(wwMain)
+	wwMain.mainloop()
 
-cwPicker.update_idletasks()
-
-fwOptions = tkinter.Frame(wwMain, borderwidth=1, relief='sunken', background=BACKGROUND_COL, height=50)
-fwOptions.grid(row=1, sticky="ew")
-fwOptions.rowconfigure(0, weight=1)
-fwOptions.rowconfigure(1, weight=1)
-fwOptions.columnconfigure(0, weight=1)
-fwOptions.columnconfigure(1, weight=1)
-fwOptions.columnconfigure(2, weight=1)
-fwOptions.columnconfigure(3, weight=1)
-fwOptions.columnconfigure(4, weight=1)
-fwOptions.grid_propagate(False)
-
-# Level 2 widgets
-
-fwPicker = tkinter.Frame(cwPicker, borderwidth=0, relief='sunken', background=BACKGROUND_COL)
-cwPicker.create_window((0, 0), window=fwPicker, anchor="nw")
-fwPicker.rowconfigure(0, weight=1)
-fwPicker.columnconfigure(0, weight=1)
-
-swPicker = tkinter.Scrollbar(cwPicker, orient="vertical", command=cwPicker.yview)
-swPicker.grid(row=0, column=1, sticky="ns")
-cwPicker.configure(yscrollcommand=swPicker.set)
-swPicker.columnconfigure(0, weight=1)
-
-fwPicker.bind('<Configure>', ConstrainPickerScroll)
-
-fwRecent = tkinter.Frame(cwRecent, borderwidth=1, relief='sunken', background=BACKGROUND_COL)
-cwRecent.create_window((0, 0), window=fwRecent, anchor="nw")
-fwRecent.rowconfigure(0, weight=1)
-fwRecent.columnconfigure(0, weight=1)
-
-swRecent = tkinter.Scrollbar(cwRecent, orient="horizontal", command=cwRecent.yview)
-swRecent.grid(row=1, column=0, sticky="ew")
-cwRecent.configure(yscrollcommand=swRecent.set)
-swRecent.columnconfigure(0, weight=1)
-
-fwRecent.bind('<Configure>', ConstrainRecentScroll)
-
-rwModeScale = tkinter.Radiobutton(fwOptions, text='Scale', variable=rvMode, value=MODE_SCALE, height=1)
-rwModeFill = tkinter.Radiobutton(fwOptions, text='Fill', variable=rvMode, value=MODE_FILL)
-rwModeMax = tkinter.Radiobutton(fwOptions, text='Max', variable=rvMode, value=MODE_MAX)
-rwModeCentre = tkinter.Radiobutton(fwOptions, text='Centre', variable=rvMode, value=MODE_CENTRE)
-rwModeTile = tkinter.Radiobutton(fwOptions, text='Tile', variable=rvMode, value=MODE_TILE)
-
-rwModeScale.configure(background=BACKGROUND_COL)
-rwModeFill.configure(background=BACKGROUND_COL)
-rwModeMax.configure(background=BACKGROUND_COL)
-rwModeCentre.configure(background=BACKGROUND_COL)
-rwModeTile.configure(background=BACKGROUND_COL)
-
-rwModeScale.grid(row=0, column=0, sticky="news")
-rwModeFill.grid(row=0, column=1, sticky="news")
-rwModeMax.grid(row=0, column=2, sticky="news")
-rwModeCentre.grid(row=0, column=3, sticky="news")
-rwModeTile.grid(row=0, column=4, sticky="news")
-
-bwDoIt = tkinter.Button(fwOptions, text="Set Background", command=SetBg)
-bwDoIt.grid(row=1, column=1)
-
-bwQuit = tkinter.Button(fwOptions, text="Close", command=Close)
-bwQuit.grid(row=1, column=2)
-
-bwI3Config = tkinter.Button(fwOptions, text="Add to i3", command=WriteI3)
-bwI3Config.grid(row=1, column=3)
-
-# Level 3 widgets
-
-UpdatePicker()
-UpdateRecent()
-
-#wwMain.bind_all('<MouseWheel>', ScrollVertically)
-#wwMain.bind_all('<Shift-MouseWheel>', ScrollHorizontally)
-
-# TO DO: expand the scrollwheel binding to all widgets not just the scrollbars.
-
-#wwMain.bind('<Configure>', ResizeWindow)
-
-wwMain.mainloop()
+if __name__ == '__main__':
+	run_project(sys.argv)
 
