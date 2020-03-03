@@ -1,16 +1,10 @@
 #!/bin/python
 
-import gi
-gi.require_version('Gtk', '3.0')
-gi.require_version('GdkPixbuf', '2.0')
+from stderr import *
+from icontile import *
 
-import tkinter
-import os
-import subprocess
 import math
-from PIL import ImageTk
-
-from gi.repository.GdkPixbuf import Pixbuf, InterpType
+import subprocess
 
 TITLE="feh-browse"
 
@@ -20,15 +14,14 @@ MODE_MAX=2
 MODE_CENTRE=3
 MODE_TILE=4
 
-BACKGROUND_COL='#ffffff'
+BACKGROUND_COL='#dddddd'
 HIGHLIGHT_COL='#ff0000'
 
 DIRECTORY=os.path.expanduser('~/Wallpaper')
 I3_CONFIG=os.path.expanduser('~/.config/i3/config')
-DIR_THUMBS=os.path.expanduser('~/.thumbs')
 
 # BUGS:
-# 2: (blocks alpha) redraw picker and recents on window resize/reflow and directory content change
+# 2: (blocks alpha) redraw picker and recents on window resize
 # 3: (blocks beta)  sanitise the filename properly
 # 4: (blocks beta)  proper elide function
 # 5: (blocks alpha) recents frame and UpdateRecents function
@@ -49,27 +42,62 @@ def Elide(stText, psLength = 0):
 
 def ClickedIcon(fnImage):
 	svSelectedFile.set(fnImage)
-	print('Selected: ' + svSelectedFile.get() + '!')
+#	eprint('Selected: ' + svSelectedFile.get() + '!')
 	UpdatePicker()
 
 def UpdateRecent():
+	# TO DO: this
 	x=1
+
+def DeleteAllWidgetsIn(fwFrame):
+	for w in fwFrame.winfo_children():
+		w.destroy()
+
+def CreateHighlightFrame(fwPicker, fnImage, psIconWidth, psIconHeight, ixRow, ixCol):
+	if fnImage == svSelectedFile.get():
+		fwHilit = tkinter.Frame(fwPicker, borderwidth=0, background=HIGHLIGHT_COL, width=psIconWidth, height=psIconHeight)
+	else:
+		fwHilit = tkinter.Frame(fwPicker, borderwidth=0, background=BACKGROUND_COL, width=psIconWidth, height=psIconHeight)
+	fwHilit.grid(row=(ixRow * 3), column=(ixCol * 2))
+	fwHilit.bind("<Button-1>", lambda event, a=fnImage:ClickedIcon(a))
+	return fwHilit
+
+def CreateSpacer(fwPicker, ixRow, ixCol):
+	psPadWidth = 5
+	psPadHeight = 5
+	fwSpacer = tkinter.Frame(fwPicker, borderwidth=0, background=BACKGROUND_COL, width=psPadWidth, height=psPadHeight)
+	fwSpacer.grid(row=(ixRow * 3) + 2, column=(ixCol * 2) + 1)
+
+def CreateOutput(fnImage, psIconWidth, psIconHeight, fwHilit, ixRow, ixCol):
+	psHighlightWidth = 10
+	psHighlightHeight = 10
+	stName = Elide(SanitiseFilename(fnImage))
+	i = IconTile(DIRECTORY, fnImage, psIconWidth - (2 * psHighlightWidth), psIconHeight - (2 * psHighlightHeight))
+	lwIcon = tkinter.Label(fwHilit)
+	lwIcon.bind("<Button-1>", lambda event, a=fnImage:ClickedIcon(a))
+	# slightly dodgy using place within grid I know, but it works :)
+	lwIcon.place(relx=0.5, rely=0.5, anchor="center")
+	try:
+		i.draw(lwIcon)
+	except OSError:
+		stName = "Unknown file type!"
+	except:
+		x=1
+	# TO DO: tooltip with full name? Remove text label then?
+	# add label widget
+	lwName = tkinter.Label(fwPicker, text=stName)
+	lwName.grid(row=(ixRow * 3) + 1, column=(ixCol * 2))
+
 
 def UpdatePicker():
 	cwPicker.update_idletasks()
 	fwPicker.update_idletasks()
-	# delete all widgets in picker frame
-	for w in fwPicker.winfo_children():
-		w.destroy()
+	DeleteAllWidgetsIn(fwPicker)
 	# set loop variables
 	psCanvasWidth = cwPicker.winfo_width()
-	psIconWidth = 170 # total width including highlight but not text
-	psIconHeight = 120 # total height including highlight but not text
+	psIconWidth = 170 # total width including highlight
+	psIconHeight = 120 # total height including highlight (but not text)
 	psTextHeight = 20
-	psPadWidth = 5
-	psPadHeight = 5
-	psHighlightWidth = 10
-	psHighlightHeight = 10
 	scIconsPerRow = math.floor(psCanvasWidth / psIconWidth)
 	ixCol = 0
 	ixRow = 0
@@ -78,52 +106,9 @@ def UpdatePicker():
 		os.makedirs(DIRECTORY, exist_ok=True)
 	arFiles = sorted(os.listdir(DIRECTORY))
 	for fnImage in arFiles:
-		# check file is ok
-		imThumb = None
-		# create highlight frame
-		if fnImage == svSelectedFile.get():
-			fwHilit = tkinter.Frame(fwPicker, borderwidth=0, background=HIGHLIGHT_COL, width=psIconWidth, height=psIconHeight)
-		else:
-			fwHilit = tkinter.Frame(fwPicker, borderwidth=0, background=BACKGROUND_COL, width=psIconWidth, height=psIconHeight)
-		fwHilit.grid(row=(ixRow * 3), column=(ixCol * 2))
-		fwHilit.bind("<Button-1>", lambda event, a=fnImage:
-						ClickedIcon(a))
-		# create spacer
-		fwSpacer = tkinter.Frame(fwPicker, borderwidth=0, background=BACKGROUND_COL, width=psPadWidth, height=psPadHeight)
-		fwSpacer.grid(row=(ixRow * 3) + 2, column=(ixCol * 2) + 1)
-		# output
-		stName = Elide(SanitiseFilename(fnImage))
-		# check thumbnail exists
-		# pb = pixbuf
-		pbThumb = None
-		fnThumb = DIR_THUMBS + '/' + fnImage + '.png'
-		if not os.path.isfile(fnThumb):
-			# create thumbnail
-			pbThumb = Pixbuf.new_from_file(DIRECTORY + '/' + fnImage)
-			psWidth = psIconWidth - (2 * psHighlightWidth)
-			psHeight = psIconHeight - (2 * psHighlightHeight)
-			pbThumb = pbThumb.scale_simple(psWidth, psHeight, InterpType.NEAREST)
-			pbThumb.savev(fnThumb, 'png', [], [])
-		# TO DO: make sure we processed symlinks correctly
-		# draw centred inside highlight frame
-		try:
-			# load thumbnail
-			# slightly dodgy using place within grid I know, but it works :)
-			lwIcon = tkinter.Label(fwHilit)
-			lwIcon.place(relx=0.5, rely=0.5, anchor="center")
-			lwIcon.bind("<Button-1>", lambda event, a=fnImage:
-							ClickedIcon(a))
-			imTkThumb = ImageTk.PhotoImage(file=fnThumb)
-			lwIcon.configure(image=imTkThumb)
-			lwIcon.image = imTkThumb # apparently PIL has a reference counting bug which causes the image to be garbage collected before it's used? See comment in https://github.com/NabaSadiaSiddiqui/Mausam/blob/master/Entry.py, line 110
-		except OSError:
-			stName = "Unknown file type!"
-		except:
-			x=1
-		# add label widget
-		lwName = tkinter.Label(fwPicker, text=stName)
-		lwName.grid(row=(ixRow * 3) + 1, column=(ixCol * 2))
-		# end of loop
+		fwHilit = CreateHighlightFrame(fwPicker, fnImage, psIconWidth, psIconHeight, ixRow, ixCol)
+		CreateSpacer(fwPicker, ixRow, ixCol)
+		CreateOutput(fnImage, psIconWidth, psIconHeight, fwHilit, ixRow, ixCol)
 		ixCol = ixCol + 1
 		ixCol = ixCol % scIconsPerRow
 		if ixCol == 0:
@@ -152,6 +137,7 @@ def SetBg():
 	arModes = ['scale', 'fill', 'max', 'center', 'tile']
 	subprocess.call(['/bin/feh', '--bg-' + arModes[rvMode.get()], DIRECTORY + '/' + svSelectedFile.get()])
 	# TO DO: add to recents list and save in sqlite db - if fails, don't worry about it, just warn
+	# TO DO: add to recents frame, database and update recents
 
 def ScrollHorizontally(event):
 	cwFavourites.xview_scroll((event.delta / 120), "units")
@@ -161,7 +147,7 @@ def ScrollVertically(event):
 
 def ResizeWindow(event):
 	# TO DO: work out how to resize without crashing
-	print("resize")
+	eprint("resize")
 
 def ConstrainPickerScroll(event):
 	cwPicker.configure(scrollregion=cwPicker.bbox("all"))
@@ -189,15 +175,10 @@ def ConstrainRecentScroll(event):
 # lw - label widget
 # tw - text widget
 
-if not os.path.isdir(DIR_THUMBS):
-	# create .thumbs dir if absent, 0700 preferred
-	os.mkdir(DIR_THUMBS, 0o700)
-
 # Level 0 widget
 
 wwMain = tkinter.Tk()
 wwMain.title(TITLE)
-wwMain.configure(background=BACKGROUND_COL)
 wwMain.rowconfigure(2, weight=3)
 wwMain.columnconfigure(0, weight=1) # needed to fill out column
 
@@ -288,8 +269,8 @@ bwI3Config.grid(row=1, column=3)
 
 UpdatePicker()
 
-wwMain.bind_all('<MouseWheel>', ScrollVertically)
-wwMain.bind_all('<Shift-MouseWheel>', ScrollHorizontally)
+#wwMain.bind_all('<MouseWheel>', ScrollVertically)
+#wwMain.bind_all('<Shift-MouseWheel>', ScrollHorizontally)
 
 # TO DO: expand the scrollwheel binding to all widgets not just the scrollbars.
 
