@@ -1,7 +1,10 @@
 #!/bin/python
 
-from stderr import *
-from icontile import *
+#from stderr import *
+#from icontile import *
+
+from stderr import eprint
+from icontile import IconTile
 
 import tkinter
 import sys
