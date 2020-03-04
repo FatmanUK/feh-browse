@@ -12,7 +12,7 @@ config = {
 	'download_url': my_url,
 	'author_email': 'fatman.uk@gmail.com',
 	'version': '0.1',
-	'install_requires': ['nose'],
+	'install_requires': ['nose', 'Pillow'],
 	'packages': ['feh-browse'],
 	'scripts': ['feh-browse'],
 	'name': 'feh-browse'

@@ -1,4 +1,4 @@
-from stderr import *
+from .stderr import eprint 
 
 import tkinter
 import os
